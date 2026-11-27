@@ -517,7 +517,30 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8852c.c
  }
  
  static void rtw8852c_set_txpwr_diff(struct rtw89_dev *rtwdev,
-@@ -2494,6 +2791,9 @@ static void rtw8852c_ctrl_tx_path_tmac(s
+@@ -2230,6 +2527,7 @@ static void rtw8852c_set_txpwr_sar_diff(
+ 		.center_freq = chan->freq,
+ 		.force_path = true,
+ 	};
++	s8 user_lmt = rtw89_phy_get_user_txpwr_limit(rtwdev);
+ 	s16 sar_rf;
+ 	s8 sar_mac;
+ 
+@@ -2237,12 +2535,12 @@ static void rtw8852c_set_txpwr_sar_diff(
+ 		return;
+ 
+ 	sar_parm.path = RF_PATH_A;
+-	sar_mac = rtw89_query_sar(rtwdev, &sar_parm);
++	sar_mac = min(rtw89_query_sar(rtwdev, &sar_parm), user_lmt);
+ 	sar_rf = rtw89_phy_txpwr_mac_to_rf(rtwdev, sar_mac);
+ 	rtw89_phy_write32_mask(rtwdev, R_TXPWRB, B_TXPWRB_MAX, sar_rf);
+ 
+ 	sar_parm.path = RF_PATH_B;
+-	sar_mac = rtw89_query_sar(rtwdev, &sar_parm);
++	sar_mac = min(rtw89_query_sar(rtwdev, &sar_parm), user_lmt);
+ 	sar_rf = rtw89_phy_txpwr_mac_to_rf(rtwdev, sar_mac);
+ 	rtw89_phy_write32_mask(rtwdev, R_P1_TXPWRB, B_TXPWRB_MAX, sar_rf);
+ }
+@@ -2494,6 +2792,9 @@ static void rtw8852c_ctrl_tx_path_tmac(s
  static void rtw8852c_ctrl_nbtg_bt_tx(struct rtw89_dev *rtwdev, bool en,
  				     enum rtw89_phy_idx phy_idx)
  {
@@ -527,7 +550,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8852c.c
  	if (en) {
  		rtw89_phy_write32_mask(rtwdev, R_PATH0_FRC_FIR_TYPE_V1,
  				       B_PATH0_FRC_FIR_TYPE_MSK_V1, 0x3);
-@@ -2665,6 +2965,9 @@ static void rtw8852c_btc_set_rfe(struct
+@@ -2665,6 +2966,9 @@ static void rtw8852c_btc_set_rfe(struct
  static void rtw8852c_ctrl_btg_bt_rx(struct rtw89_dev *rtwdev, bool en,
  				    enum rtw89_phy_idx phy_idx)
  {
@@ -537,7 +560,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8852c.c
  	if (en) {
  		rtw89_phy_write32_mask(rtwdev, R_PATH0_BT_SHARE_V1,
  				       B_PATH0_BT_SHARE_V1, 0x1);
-@@ -3100,9 +3403,9 @@ static const struct rtw89_chip_ops rtw88
+@@ -3100,9 +3404,9 @@ static const struct rtw89_chip_ops rtw88
  	.set_channel_help	= rtw8852c_set_channel_help,
  	.read_efuse		= rtw8852c_read_efuse,
  	.read_phycap		= rtw8852c_read_phycap,
@@ -549,7 +572,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8852c.c
  	.rfk_hw_init		= NULL,
  	.rfk_init		= rtw8852c_rfk_init,
  	.rfk_init_late		= NULL,
-@@ -3159,6 +3462,31 @@ static const struct rtw89_chip_ops rtw88
+@@ -3159,6 +3463,31 @@ static const struct rtw89_chip_ops rtw88
  	.btc_set_policy		= rtw89_btc_set_policy_v1,
  };
  
@@ -581,7 +604,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8852c.c
  const struct rtw89_chip_info rtw8852c_chip_info = {
  	.chip_id		= RTL8852C,
  	.chip_gen		= RTW89_CHIP_AX,
-@@ -3174,6 +3502,7 @@ const struct rtw89_chip_info rtw8852c_ch
+@@ -3174,6 +3503,7 @@ const struct rtw89_chip_info rtw8852c_ch
  	.bbmcu_nr		= 0,
  	.needed_fw_elms		= 0,
  	.fw_blacklist		= &rtw89_fw_blacklist_default,
@@ -589,7 +612,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8852c.c
  	.fifo_size		= 458752,
  	.small_fifo_size	= false,
  	.dle_scc_rsvd_size	= 0,
-@@ -3323,6 +3652,7 @@ const struct rtw89_chip_info rtw8852c_ch
+@@ -3323,6 +3653,7 @@ const struct rtw89_chip_info rtw8852c_ch
  EXPORT_SYMBOL(rtw8852c_chip_info);
  
  MODULE_FIRMWARE(RTW8852C_MODULE_FIRMWARE);

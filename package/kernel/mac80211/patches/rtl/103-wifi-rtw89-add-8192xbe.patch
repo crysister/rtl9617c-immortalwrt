@@ -56,7 +56,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/core.h
 +++ backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
-@@ -5552,6 +5552,23 @@
+@@ -5552,6 +5552,23 @@ struct rtw89_rx_dck_info {
  	u8 thermal[RF_PATH_MAX];
  };
  
@@ -80,7 +80,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
  struct rtw89_iqk_info {
  	bool lok_cor_fail[RTW89_IQK_CHS_NR][RTW89_IQK_PATH_NR];
  	bool lok_fin_fail[RTW89_IQK_CHS_NR][RTW89_IQK_PATH_NR];
-@@ -6520,6 +6537,7 @@
+@@ -6532,6 +6549,7 @@ struct rtw89_dev {
  	struct rtw89_rfk_mcc_info rfk_mcc;
  	struct rtw89_lck_info lck;
  	struct rtw89_rx_dck_info rx_dck;
@@ -92,7 +92,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8192xb.c
 ===================================================================
 --- /dev/null
 +++ backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8192xb.c
-@@ -0,0 +1,3092 @@
+@@ -0,0 +1,3093 @@
 +// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 +/* Copyright(c) 2019-2022  Realtek Corporation
 + */
@@ -2145,6 +2145,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8192xb.c
 +		.center_freq = chan->freq,
 +		.force_path = true,
 +	};
++	s8 user_lmt = rtw89_phy_get_user_txpwr_limit(rtwdev);
 +	s16 sar_rf;
 +	s8 sar_mac;
 +
@@ -2152,12 +2153,12 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/rtw8192xb.c
 +		return;
 +
 +	sar_parm.path = RF_PATH_A;
-+	sar_mac = rtw89_query_sar(rtwdev, &sar_parm);
++	sar_mac = min(rtw89_query_sar(rtwdev, &sar_parm), user_lmt);
 +	sar_rf = rtw89_phy_txpwr_mac_to_rf(rtwdev, sar_mac);
 +	rtw89_phy_write32_mask(rtwdev, R_TXPWRB, B_TXPWRB_MAX, sar_rf);
 +
 +	sar_parm.path = RF_PATH_B;
-+	sar_mac = rtw89_query_sar(rtwdev, &sar_parm);
++	sar_mac = min(rtw89_query_sar(rtwdev, &sar_parm), user_lmt);
 +	sar_rf = rtw89_phy_txpwr_mac_to_rf(rtwdev, sar_mac);
 +	rtw89_phy_write32_mask(rtwdev, R_P1_TXPWRB, B_TXPWRB_MAX, sar_rf);
 +}

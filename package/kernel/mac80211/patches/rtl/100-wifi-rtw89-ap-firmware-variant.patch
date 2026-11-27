@@ -35,15 +35,28 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/core.c
 +++ backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
-@@ -204,6 +204,23 @@ static const struct ieee80211_iface_comb
+@@ -204,6 +204,36 @@ static const struct ieee80211_iface_comb
  	},
  };
  
++static const struct ieee80211_iface_limit rtw89_iface_limits_ap[] = {
++	{
++		.max = 1,
++		.types = BIT(NL80211_IFTYPE_STATION) |
++			 BIT(NL80211_IFTYPE_P2P_CLIENT) |
++			 BIT(NL80211_IFTYPE_P2P_GO),
++	},
++	{
++		.max = RTW89_PORT_NUM,
++		.types = BIT(NL80211_IFTYPE_AP),
++	},
++};
++
 +static const struct ieee80211_iface_combination rtw89_iface_combs_ap[] = {
 +	{
-+		.limits = rtw89_iface_limits,
-+		.n_limits = ARRAY_SIZE(rtw89_iface_limits),
-+		.max_interfaces = RTW89_MAX_INTERFACE_NUM,
++		.limits = rtw89_iface_limits_ap,
++		.n_limits = ARRAY_SIZE(rtw89_iface_limits_ap),
++		.max_interfaces = RTW89_PORT_NUM,
 +		.num_different_channels = 1,
 +		.radar_detect_widths = BIT(NL80211_CHAN_WIDTH_20_NOHT) |
 +				       BIT(NL80211_CHAN_WIDTH_20) |
@@ -59,16 +72,174 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  static const u8 rtw89_ext_capa_sta[] = {
  	[0] = WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING,
  	[2] = WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT,
-@@ -685,6 +702,8 @@ rtw89_core_tx_update_sec_key(struct rtw8
+@@ -486,6 +516,45 @@ void rtw89_core_set_chip_txpwr(struct rt
+ 	__rtw89_core_set_chip_txpwr(rtwdev, conf.chans[1], RTW89_PHY_1);
+ }
+ 
++void rtw89_core_update_txpwr_limit(struct rtw89_dev *rtwdev)
++{
++	struct rtw89_vif_link *rtwvif_link;
++	struct ieee80211_bss_conf *bss_conf;
++	struct rtw89_vif *rtwvif;
++	unsigned int link_id;
++	int power = INT_MAX;
++
++	rcu_read_lock();
++	rtw89_for_each_rtwvif(rtwdev, rtwvif) {
++		rtw89_vif_for_each_link(rtwvif, rtwvif_link, link_id) {
++			bss_conf = rtw89_vif_rcu_dereference_link(rtwvif_link, false);
++			if (bss_conf->txpower != INT_MIN)
++				power = min(power, bss_conf->txpower);
++		}
++	}
++	rcu_read_unlock();
++
++	if (power == INT_MAX) {
++		if (!rtwdev->ops->assign_vif_chanctx &&
++		    rtwdev->hw->conf.chandef.chan &&
++		    rtwdev->hw->conf.power_level != INT_MIN)
++			power = rtwdev->hw->conf.power_level;
++		else
++			power = INT_MIN;
++	}
++
++	rtwdev->txpower_dbm = power;
++}
++
++void rtw89_core_recalc_txpwr(struct rtw89_dev *rtwdev)
++{
++	int prev = rtwdev->txpower_dbm;
++
++	rtw89_core_update_txpwr_limit(rtwdev);
++	if (rtwdev->txpower_dbm != prev)
++		rtw89_core_set_chip_txpwr(rtwdev);
++}
++
+ void rtw89_chip_rfk_channel(struct rtw89_dev *rtwdev,
+ 			    struct rtw89_vif_link *rtwvif_link)
+ {
+@@ -639,7 +708,7 @@ rtw89_core_tx_update_ampdu_info(struct r
+ 	rcu_read_unlock();
+ }
+ 
+-static void
++static int
+ rtw89_core_tx_update_sec_key(struct rtw89_dev *rtwdev,
+ 			     struct rtw89_core_tx_request *tx_req)
+ {
+@@ -660,7 +729,7 @@ rtw89_core_tx_update_sec_key(struct rtw8
+ 	sec_cam = cam_info->sec_entries[sec_cam_idx];
+ 	if (!sec_cam) {
+ 		rtw89_warn(rtwdev, "sec cam entry is empty\n");
+-		return;
++		return -EINVAL;
+ 	}
+ 
+ 	switch (key->cipher) {
+@@ -685,9 +754,11 @@ rtw89_core_tx_update_sec_key(struct rtw8
  	case WLAN_CIPHER_SUITE_GCMP_256:
  		sec_type = RTW89_SEC_KEY_TYPE_GCMP256;
  		break;
 +	case WLAN_CIPHER_SUITE_AES_CMAC:
-+		return;
++		return 0;
  	default:
  		rtw89_warn(rtwdev, "key cipher not supported %d\n", key->cipher);
- 		return;
-@@ -1170,6 +1189,7 @@ rtw89_core_tx_wake(struct rtw89_dev *rtw
+-		return;
++		return -EINVAL;
+ 	}
+ 
+ 	desc_info->sec_en = true;
+@@ -696,7 +767,7 @@ rtw89_core_tx_update_sec_key(struct rtw8
+ 	desc_info->sec_cam_idx = sec_cam->sec_cam_idx;
+ 
+ 	if (!chip->hw_sec_hdr)
+-		return;
++		return 0;
+ 
+ 	pn64 = atomic64_inc_return(&key->tx_pn);
+ 	desc_info->sec_seq[0] = pn64;
+@@ -706,6 +777,8 @@ rtw89_core_tx_update_sec_key(struct rtw8
+ 	desc_info->sec_seq[4] = pn64 >> 32;
+ 	desc_info->sec_seq[5] = pn64 >> 40;
+ 	desc_info->wp_offset = 1; /* in unit of 8 bytes for security header */
++
++	return 0;
+ }
+ 
+ static u16 rtw89_core_get_mgmt_rate(struct rtw89_dev *rtwdev,
+@@ -861,7 +934,7 @@ u8 rtw89_core_get_ch_dma_v2(struct rtw89
+ }
+ EXPORT_SYMBOL(rtw89_core_get_ch_dma_v2);
+ 
+-static void
++static int
+ rtw89_core_tx_update_mgmt_info(struct rtw89_dev *rtwdev,
+ 			       struct rtw89_core_tx_request *tx_req)
+ {
+@@ -872,6 +945,7 @@ rtw89_core_tx_update_mgmt_info(struct rt
+ 						       rtwvif_link->chanctx_idx);
+ 	struct sk_buff *skb = tx_req->skb;
+ 	u8 qsel, ch_dma;
++	int ret;
+ 
+ 	qsel = rtw89_core_get_qsel_mgmt(rtwdev, tx_req);
+ 	ch_dma = rtw89_chip_get_ch_dma(rtwdev, qsel);
+@@ -891,7 +965,9 @@ rtw89_core_tx_update_mgmt_info(struct rt
+ 	desc_info->data_rate = rtw89_core_get_mgmt_rate(rtwdev, tx_req, chan);
+ 
+ 	if (chip->hw_mgmt_tx_encrypt && IEEE80211_SKB_CB(skb)->control.hw_key) {
+-		rtw89_core_tx_update_sec_key(rtwdev, tx_req);
++		ret = rtw89_core_tx_update_sec_key(rtwdev, tx_req);
++		if (ret)
++			return ret;
+ 		rtw89_core_tx_update_llc_hdr(rtwdev, desc_info, skb);
+ 	}
+ 
+@@ -899,6 +975,8 @@ rtw89_core_tx_update_mgmt_info(struct rt
+ 		    "tx mgmt frame with rate 0x%x on channel %d (band %d, bw %d)\n",
+ 		    desc_info->data_rate, chan->channel, chan->band_type,
+ 		    chan->band_width);
++
++	return 0;
+ }
+ 
+ static void
+@@ -1082,7 +1160,7 @@ out:
+ 	return rate;
+ }
+ 
+-static void
++static int
+ rtw89_core_tx_update_data_info(struct rtw89_dev *rtwdev,
+ 			       struct rtw89_core_tx_request *tx_req)
+ {
+@@ -1092,6 +1170,7 @@ rtw89_core_tx_update_data_info(struct rt
+ 	struct sk_buff *skb = tx_req->skb;
+ 	u8 tid, tid_indicate;
+ 	u8 qsel, ch_dma;
++	int ret;
+ 
+ 	tid = skb->priority & IEEE80211_QOS_CTL_TAG1D_MASK;
+ 	tid_indicate = rtw89_core_get_tid_indicate(rtwdev, tid);
+@@ -1111,10 +1190,15 @@ rtw89_core_tx_update_data_info(struct rt
+ 	/* enable wd_info for AMPDU */
+ 	desc_info->en_wd_info = true;
+ 
+-	if (IEEE80211_SKB_CB(skb)->control.hw_key)
+-		rtw89_core_tx_update_sec_key(rtwdev, tx_req);
++	if (IEEE80211_SKB_CB(skb)->control.hw_key) {
++		ret = rtw89_core_tx_update_sec_key(rtwdev, tx_req);
++		if (ret)
++			return ret;
++	}
+ 
+ 	desc_info->data_retry_lowest_rate = rtw89_core_get_data_rate(rtwdev, tx_req);
++
++	return 0;
+ }
+ 
+ static enum btc_pkt_type
+@@ -1170,6 +1254,7 @@ rtw89_core_tx_wake(struct rtw89_dev *rtw
  			goto notify;
  		break;
  	case RTL8852C:
@@ -76,7 +247,81 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  		if (test_bit(RTW89_FLAG_LOW_POWER_MODE, rtwdev->flags))
  			goto notify;
  		break;
-@@ -4071,7 +4091,6 @@ void rtw89_core_query_rxdesc(struct rtw8
+@@ -1224,7 +1309,7 @@ static void rtw89_core_tx_update_injecti
+ 	}
+ }
+ 
+-static void
++static int
+ rtw89_core_tx_update_desc_info(struct rtw89_dev *rtwdev,
+ 			       struct rtw89_core_tx_request *tx_req)
+ {
+@@ -1237,12 +1322,13 @@ rtw89_core_tx_update_desc_info(struct rt
+ 	bool upd_wlan_hdr = false;
+ 	bool is_bmc;
+ 	u16 seq;
++	int ret;
+ 
+ 	desc_info->pkt_size = skb->len;
+ 
+ 	if (unlikely(tx_req->tx_type == RTW89_CORE_TX_TYPE_FWCMD)) {
+ 		rtw89_core_tx_update_h2c_info(rtwdev, tx_req);
+-		return;
++		return 0;
+ 	}
+ 
+ 	tx_req->tx_type = rtw89_core_get_tx_type(rtwdev, skb);
+@@ -1272,10 +1358,14 @@ rtw89_core_tx_update_desc_info(struct rt
+ 
+ 	switch (tx_req->tx_type) {
+ 	case RTW89_CORE_TX_TYPE_MGMT:
+-		rtw89_core_tx_update_mgmt_info(rtwdev, tx_req);
++		ret = rtw89_core_tx_update_mgmt_info(rtwdev, tx_req);
++		if (ret)
++			return ret;
+ 		break;
+ 	case RTW89_CORE_TX_TYPE_DATA:
+-		rtw89_core_tx_update_data_info(rtwdev, tx_req);
++		ret = rtw89_core_tx_update_data_info(rtwdev, tx_req);
++		if (ret)
++			return ret;
+ 		pkt_type = rtw89_core_tx_btc_spec_pkt_notify(rtwdev, tx_req);
+ 		rtw89_core_tx_update_he_qos_htc(rtwdev, tx_req, pkt_type);
+ 		rtw89_core_tx_update_ampdu_info(rtwdev, tx_req, pkt_type);
+@@ -1287,6 +1377,8 @@ rtw89_core_tx_update_desc_info(struct rt
+ 
+ 	if (unlikely(info->flags & IEEE80211_TX_CTL_INJECTED))
+ 		rtw89_core_tx_update_injection(rtwdev, tx_req, info);
++
++	return 0;
+ }
+ 
+ static void rtw89_tx_wait_work(struct wiphy *wiphy, struct wiphy_work *work)
+@@ -1387,6 +1479,9 @@ static int rtw89_core_tx_write_link(stru
+ 	struct rtw89_core_tx_request tx_req = {};
+ 	int ret;
+ 
++	if (!test_bit(RTW89_FLAG_RUNNING, rtwdev->flags))
++		return -ENETDOWN;
++
+ 	tx_req.skb = skb;
+ 	tx_req.vif = vif;
+ 	tx_req.sta = sta;
+@@ -1394,9 +1489,12 @@ static int rtw89_core_tx_write_link(stru
+ 	tx_req.rtwsta_link = rtwsta_link;
+ 	tx_req.with_wait = !!wait;
+ 
++	ret = rtw89_core_tx_update_desc_info(rtwdev, &tx_req);
++	if (ret)
++		return ret;
++
+ 	rtw89_traffic_stats_accu(rtwdev, rtwvif, skb, true, true);
+ 	rtw89_wow_parse_akm(rtwdev, skb);
+-	rtw89_core_tx_update_desc_info(rtwdev, &tx_req);
+ 	rtw89_core_tx_wake(rtwdev, &tx_req);
+ 
+ 	rcu_assign_pointer(skb_data->wait, wait);
+@@ -4071,7 +4169,6 @@ void rtw89_core_query_rxdesc(struct rtw8
  			     struct rtw89_rx_desc_info *desc_info,
  			     u8 *data, u32 data_offset)
  {
@@ -84,7 +329,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  	struct rtw89_rxdesc_short *rxd_s;
  	struct rtw89_rxdesc_long *rxd_l;
  	u8 shift_len, drv_info_len;
-@@ -4082,7 +4101,7 @@ void rtw89_core_query_rxdesc(struct rtw8
+@@ -4082,7 +4179,7 @@ void rtw89_core_query_rxdesc(struct rtw8
  	desc_info->long_rxdesc = le32_get_bits(rxd_s->dword0,  AX_RXD_LONG_RXD);
  	desc_info->pkt_type = le32_get_bits(rxd_s->dword0,  AX_RXD_RPKT_TYPE_MASK);
  	desc_info->mac_info_valid = le32_get_bits(rxd_s->dword0, AX_RXD_MAC_INFO_VLD);
@@ -93,7 +338,22 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  		desc_info->bw = le32_get_bits(rxd_s->dword1, AX_RXD_BW_v1_MASK);
  	else
  		desc_info->bw = le32_get_bits(rxd_s->dword1, AX_RXD_BW_MASK);
-@@ -5788,7 +5807,7 @@ static bool rtw89_sta_link_can_er(struct
+@@ -4843,10 +4940,13 @@ static void rtw89_core_txq_work(struct w
+ 	bool reinvoke = false;
+ 	u8 ac;
+ 
++	if (!test_bit(RTW89_FLAG_RUNNING, rtwdev->flags))
++		return;
++
+ 	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++)
+ 		rtw89_core_txq_schedule(rtwdev, ac, &reinvoke);
+ 
+-	if (reinvoke) {
++	if (reinvoke && test_bit(RTW89_FLAG_RUNNING, rtwdev->flags)) {
+ 		/* reinvoke to process the last frame */
+ 		mod_delayed_work(rtwdev->txq_wq, &rtwdev->txq_reinvoke_work, 1);
+ 	}
+@@ -5788,7 +5888,7 @@ static bool rtw89_sta_link_can_er(struct
  	    bss_conf->he_oper.params & IEEE80211_HE_OPERATION_ER_SU_DISABLE)
  		return false;
  
@@ -102,7 +362,51 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  	    rtw89_sta_link_has_su_mu_4xhe08(link_sta) &&
  	    !rtw89_sta_link_has_er_su_4xhe08(link_sta))
  		return false;
-@@ -7091,10 +7110,16 @@ static void rtw89_core_setup_rfe_parms(s
+@@ -6646,6 +6746,7 @@ void rtw89_core_stop(struct rtw89_dev *r
+ 	rtw89_btc_ntfy_radio_state(rtwdev, BTC_RFCTRL_WL_OFF);
+ 
+ 	clear_bit(RTW89_FLAG_RUNNING, rtwdev->flags);
++	synchronize_rcu();
+ 
+ 	wiphy_work_cancel(wiphy, &rtwdev->c2h_work);
+ 	wiphy_work_cancel(wiphy, &rtwdev->cancel_6ghz_probe_work);
+@@ -6653,7 +6754,9 @@ void rtw89_core_stop(struct rtw89_dev *r
+ 	wiphy_work_cancel(wiphy, &btc->arp_notify_work);
+ 	wiphy_work_cancel(wiphy, &btc->dhcp_notify_work);
+ 	wiphy_work_cancel(wiphy, &btc->icmp_notify_work);
++	cancel_work_sync(&rtwdev->txq_work);
+ 	cancel_delayed_work_sync(&rtwdev->txq_reinvoke_work);
++	cancel_work_sync(&rtwdev->txq_work);
+ 	wiphy_delayed_work_cancel(wiphy, &rtwdev->tx_wait_work);
+ 	wiphy_delayed_work_cancel(wiphy, &rtwdev->track_work);
+ 	wiphy_delayed_work_cancel(wiphy, &rtwdev->track_ps_work);
+@@ -6906,6 +7009,7 @@ int rtw89_core_init(struct rtw89_dev *rt
+ 	spin_lock_init(&rtwdev->ba_lock);
+ 	spin_lock_init(&rtwdev->rpwm_lock);
+ 	rtwdev->total_sta_assoc = 0;
++	rtwdev->txpower_dbm = INT_MIN;
+ 
+ 	rtw89_init_wait(&rtwdev->mcc.wait);
+ 	rtw89_init_wait(&rtwdev->mlo.wait);
+@@ -6973,6 +7077,7 @@ void rtw89_core_scan_start(struct rtw89_
+ 						       rtwvif_link->chanctx_idx);
+ 	struct rtw89_bb_ctx *bb = rtw89_get_bb_ctx(rtwdev, rtwvif_link->phy_idx);
+ 
++	rtw89_phy_survey_reset(rtwdev);
+ 	rtwdev->scanning = true;
+ 
+ 	ether_addr_copy(rtwvif_link->mac_addr, mac_addr);
+@@ -7020,6 +7125,9 @@ void rtw89_core_scan_complete(struct rtw
+ 				    "scan send null-0 failed: %d\n", ret);
+ 	}
+ 
++	if (!hw_scan)
++		rtw89_phy_survey_collect(rtwdev, true);
++
+ 	rtwdev->scanning = false;
+ 	rtw89_for_each_active_bb(rtwdev, bb)
+ 		bb->dig.bypass_dig = true;
+@@ -7091,10 +7199,16 @@ static void rtw89_core_setup_rfe_parms(s
  {
  	const struct rtw89_chip_info *chip = rtwdev->chip;
  	const struct rtw89_rfe_parms_conf *conf = chip->rfe_parms_conf;
@@ -119,7 +423,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  	if (!conf) {
  		sel = chip->dflt_parms;
  		goto out;
-@@ -7467,6 +7492,8 @@ static int rtw89_core_register_hw(struct
+@@ -7467,6 +7581,8 @@ static int rtw89_core_register_hw(struct
  		return ret;
  	}
  
@@ -128,7 +432,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  	ret = rtw89_regd_setup(rtwdev);
  	if (ret) {
  		rtw89_err(rtwdev, "failed to set up regd\n");
-@@ -7547,6 +7574,10 @@ struct rtw89_dev *rtw89_alloc_ieee80211_
+@@ -7547,6 +7663,10 @@ struct rtw89_dev *rtw89_alloc_ieee80211_
  	bool support_mlo;
  	bool no_chanctx;
  
@@ -139,7 +443,17 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.c
  	firmware = rtw89_early_fw_feature_recognize(device, chip, variant,
  						    &early_fw, &fw_format);
  
-@@ -7585,12 +7616,17 @@ struct rtw89_dev *rtw89_alloc_ieee80211_
+@@ -7569,9 +7689,6 @@ struct rtw89_dev *rtw89_alloc_ieee80211_
+ 		ops->cancel_remain_on_channel = NULL;
+ 	}
+ 
+-	if (!chip->support_noise)
+-		ops->get_survey = NULL;
+-
+ 	driver_data_size = sizeof(struct rtw89_dev) + bus_data_size;
+ 	hw = ieee80211_alloc_hw(driver_data_size, ops);
+ 	if (!hw)
+@@ -7585,12 +7702,17 @@ struct rtw89_dev *rtw89_alloc_ieee80211_
  		      RTW89_CHK_FW_FEATURE(NOTIFY_AP_INFO, &early_fw) &&
  		      RTW89_MLD_NON_STA_LINK_NUM == 1;
  
@@ -223,7 +537,33 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
  #define TIA_GAIN_NUM 2
  struct rtw89_dig_info {
  	struct rtw89_agc_gaincode_set cur_gaincode;
-@@ -6133,6 +6150,11 @@ struct rtw89_phy_bb_gain_info {
+@@ -5942,6 +5959,15 @@ struct rtw89_nhm_report {
+ 	u8 noise;
+ };
+ 
++struct rtw89_chan_survey {
++	u64 time_ms;
++	u64 time_busy_ms;
++	u64 time_rx_ms;
++	u64 time_tx_ms;
++	s8 noise;
++	bool filled;
++};
++
+ #define RTW89_FAHM_TH_NUM 11
+ #define RTW89_FAHM_RPT_NUM 12
+ #define RTW89_IFS_CLM_NUM 4
+@@ -5983,6 +6009,9 @@ struct rtw89_env_monitor_info {
+ 	u8 nhm_th[RTW89_NHM_RPT_NUM];
+ 	struct rtw89_nhm_report *nhm_his[RTW89_BAND_NUM];
+ 	struct list_head nhm_rpt_list;
++	struct rtw89_chan_survey *survey[RTW89_BAND_NUM];
++	const struct ieee80211_channel *survey_chan;
++	bool survey_active;
+ 	u8 edcca_clm_ratio;
+ };
+ 
+@@ -6133,6 +6162,11 @@ struct rtw89_phy_bb_gain_info {
  	s8 lna_op1db[RTW89_BB_GAIN_BAND_NR][RF_PATH_MAX][LNA_GAIN_NUM];
  	s8 tia_lna_op1db[RTW89_BB_GAIN_BAND_NR][RF_PATH_MAX]
  			[LNA_GAIN_NUM + 1]; /* TIA0_LNA0~6 + TIA1_LNA6 */
@@ -235,7 +575,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
  	s8 rpl_ofst_20[RTW89_BB_GAIN_BAND_NR][RF_PATH_MAX];
  	s8 rpl_ofst_40[RTW89_BB_GAIN_BAND_NR][RF_PATH_MAX]
  		      [RTW89_BB_RXSC_NUM_40];
-@@ -6419,6 +6441,8 @@ struct rtw89_io_ops {
+@@ -6419,6 +6453,8 @@ struct rtw89_io_ops {
  			 u32 addr, u32 mask, u32 data);
  };
  
@@ -244,7 +584,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
  struct rtw89_dev {
  	struct ieee80211_hw *hw;
  	struct device *dev;
-@@ -6431,6 +6455,7 @@ struct rtw89_dev {
+@@ -6431,6 +6467,7 @@ struct rtw89_dev {
  	struct rtw89_hw_scan_info scan_info;
  	const struct rtw89_chip_info *chip;
  	const struct rtw89_chip_variant *variant;
@@ -252,7 +592,15 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
  	const struct rtw89_pci_info *pci_info;
  	const struct rtw89_rfe_parms *rfe_parms;
  	struct rtw89_hal hal;
-@@ -8041,6 +8066,18 @@ struct rtw89_bb_ctx *rtw89_get_bb_ctx(st
+@@ -6545,6 +6582,7 @@ struct rtw89_dev {
+ 	struct rtw89_sar_info sar;
+ 	struct rtw89_tas_info tas;
+ 	struct rtw89_ant_gain_info ant_gain;
++	int txpower_dbm;
+ 
+ 	struct rtw89_btc btc;
+ 	enum rtw89_ps_mode ps_mode;
+@@ -8041,6 +8079,18 @@ struct rtw89_bb_ctx *rtw89_get_bb_ctx(st
  	return &rtwdev->bbs[phy_idx];
  }
  
@@ -271,6 +619,15 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/core.h
  static inline bool rtw89_is_rtl885xb(struct rtw89_dev *rtwdev)
  {
  	enum rtw89_core_chip_id chip_id = rtwdev->chip->chip_id;
+@@ -8151,6 +8201,8 @@ struct rtw89_sta_link *rtw89_sta_set_lin
+ 					  unsigned int link_id);
+ void rtw89_sta_unset_link(struct rtw89_sta *rtwsta, unsigned int link_id);
+ void rtw89_core_set_chip_txpwr(struct rtw89_dev *rtwdev);
++void rtw89_core_update_txpwr_limit(struct rtw89_dev *rtwdev);
++void rtw89_core_recalc_txpwr(struct rtw89_dev *rtwdev);
+ void rtw89_chip_rfk_channel(struct rtw89_dev *rtwdev,
+ 			    struct rtw89_vif_link *rtwvif_link);
+ const struct rtw89_6ghz_span *
 Index: backports-7.2/drivers/net/wireless/realtek/rtw89/efuse.c
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/efuse.c
@@ -642,7 +999,51 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		msk32 = B_AX_BMC_MGNT_DEC;
  
  	if (enable)
-@@ -2494,7 +2492,7 @@ static int sec_eng_init_ax(struct rtw89_
+@@ -2385,6 +2383,33 @@ int rtw89_mac_preload_init(struct rtw89_
+ 	return mac->preload_init(rtwdev, mac_idx, mode);
+ }
+ 
++static bool rtw89_mac_has_active_ap_bcn(struct rtw89_dev *rtwdev)
++{
++	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
++	const struct rtw89_port_reg *p = mac->port_base;
++	struct rtw89_vif_link *rtwvif_link;
++	struct rtw89_vif *rtwvif;
++	unsigned int link_id;
++	u32 val;
++
++	if (!p)
++		return false;
++
++	rtw89_for_each_rtwvif(rtwdev, rtwvif) {
++		rtw89_vif_for_each_link(rtwvif, rtwvif_link, link_id) {
++			if (rtwvif_link->net_type != RTW89_NET_TYPE_AP_MODE)
++				continue;
++
++			val = rtw89_read32_port(rtwdev, rtwvif_link, p->port_cfg);
++			if ((val & (B_AX_PORT_FUNC_EN | B_AX_BCNTX_EN)) ==
++			    (B_AX_PORT_FUNC_EN | B_AX_BCNTX_EN))
++				return true;
++		}
++	}
++
++	return false;
++}
++
+ static bool dle_is_txq_empty(struct rtw89_dev *rtwdev)
+ {
+ 	u32 msk32;
+@@ -2403,6 +2428,9 @@ static bool dle_is_txq_empty(struct rtw8
+ 		B_AX_PLE_EMPTY_QTA_DMAC_CPUIO |
+ 		B_AX_WDE_EMPTY_QTA_DMAC_DATA_CPU |
+ 		B_AX_PLE_EMPTY_QTA_DMAC_WLAN_CPU;
++	if (rtw89_mac_has_active_ap_bcn(rtwdev))
++		msk32 &= ~(B_AX_WDE_EMPTY_QUE_CMAC0_MBH |
++			   B_AX_WDE_EMPTY_QTA_DMAC_CPUIO);
+ 	val32 = rtw89_read32(rtwdev, R_AX_DLE_EMPTY0);
+ 
+ 	if ((val32 & msk32) == msk32)
+@@ -2494,7 +2522,7 @@ static int sec_eng_init_ax(struct rtw89_
  	/* init TX encryption */
  	val |= (B_AX_SEC_TX_ENC | B_AX_SEC_RX_DEC);
  	val |= (B_AX_MC_DEC | B_AX_BC_DEC);
@@ -651,7 +1052,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val |= B_AX_UC_MGNT_DEC;
  	if (chip->chip_id == RTL8852A || chip->chip_id == RTL8852B ||
  	    chip->chip_id == RTL8851B ||
-@@ -2509,7 +2507,7 @@ static int sec_eng_init_ax(struct rtw89_
+@@ -2509,7 +2537,7 @@ static int sec_eng_init_ax(struct rtw89_
  	/* option init */
  	rtw89_write32(rtwdev, R_AX_SEC_MPDU_PROC, val);
  
@@ -660,7 +1061,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_mask(rtwdev, R_AX_SEC_DEBUG1,
  				   B_AX_TX_TIMEOUT_SEL_MASK, AX_TX_TO_VAL);
  
-@@ -2601,7 +2599,7 @@ static int scheduler_init_ax(struct rtw8
+@@ -2601,7 +2629,7 @@ static int scheduler_init_ax(struct rtw8
  	rtw89_io_pack(rtwdev);
  
  	reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_PREBKF_CFG_1, mac_idx);
@@ -669,7 +1070,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_mask(rtwdev, reg, B_AX_SIFS_MACTXEN_T1_MASK,
  				   SIFS_MACTXEN_T1_V1);
  	else
-@@ -2617,7 +2615,7 @@ static int scheduler_init_ax(struct rtw8
+@@ -2617,7 +2645,7 @@ static int scheduler_init_ax(struct rtw8
  	rtw89_write32_clr(rtwdev, reg, B_AX_BTCCA_EN);
  
  	reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_PREBKF_CFG_0, mac_idx);
@@ -678,7 +1079,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val = rtw89_read32_mask(rtwdev, R_AX_SEC_ENG_CTRL,
  					B_AX_TX_PARTIAL_MODE);
  		if (!val)
-@@ -3319,11 +3317,31 @@ static int rtw89_mac_setup_phycap_part1(
+@@ -3319,11 +3347,31 @@ static int rtw89_mac_setup_phycap_part1(
  	return 0;
  }
  
@@ -710,7 +1111,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	ret = rtw89_mac_setup_phycap_part0(rtwdev);
  	if (ret)
  		return ret;
-@@ -3753,7 +3771,6 @@ static void rtw89_wsec_imr_enable(struct
+@@ -3753,7 +3801,6 @@ static void rtw89_wsec_imr_enable(struct
  
  static void rtw89_mpdu_trx_imr_enable(struct rtw89_dev *rtwdev)
  {
@@ -718,7 +1119,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	const struct rtw89_imr_info *imr = rtwdev->chip->imr_info;
  
  	rtw89_write32_clr(rtwdev, R_AX_MPDU_TX_ERR_IMR,
-@@ -3762,7 +3779,7 @@ static void rtw89_mpdu_trx_imr_enable(st
+@@ -3762,7 +3809,7 @@ static void rtw89_mpdu_trx_imr_enable(st
  			  B_AX_TX_MPDU_SIZE_ZERO_INT_EN |
  			  B_AX_TX_OFFSET_ERR_INT_EN |
  			  B_AX_TX_HDR3_SIZE_ERR_INT_EN);
@@ -727,7 +1128,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_clr(rtwdev, R_AX_MPDU_TX_ERR_IMR,
  				  B_AX_TX_ETH_TYPE_ERR_EN |
  				  B_AX_TX_LLC_PRE_ERR_EN |
-@@ -3889,14 +3906,13 @@ static void rtw89_ptcl_imr_enable(struct
+@@ -3889,14 +3936,13 @@ static void rtw89_ptcl_imr_enable(struct
  static void rtw89_cdma_imr_enable(struct rtw89_dev *rtwdev, u8 mac_idx)
  {
  	const struct rtw89_imr_info *imr = rtwdev->chip->imr_info;
@@ -743,7 +1144,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		reg = rtw89_mac_reg_by_idx(rtwdev, imr->cdma_imr_1_reg, mac_idx);
  		rtw89_write32_clr(rtwdev, reg, imr->cdma_imr_1_clr);
  		rtw89_write32_set(rtwdev, reg, imr->cdma_imr_1_set);
-@@ -4028,7 +4044,6 @@ static int set_host_rpr_ax(struct rtw89_
+@@ -4028,7 +4074,6 @@ static int set_host_rpr_ax(struct rtw89_
  
  static int trx_init_ax(struct rtw89_dev *rtwdev)
  {
@@ -751,7 +1152,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	enum rtw89_qta_mode qta_mode = rtwdev->mac.qta_mode;
  	int ret;
  
-@@ -4072,7 +4087,7 @@ static int trx_init_ax(struct rtw89_dev
+@@ -4072,7 +4117,7 @@ static int trx_init_ax(struct rtw89_dev
  		return ret;
  	}
  
@@ -760,7 +1161,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_clr(rtwdev, R_AX_RSP_CHK_SIG,
  				  B_AX_RSP_STATIC_RTS_CHK_SERV_BW_EN);
  
-@@ -4207,10 +4222,9 @@ static int rtw89_mac_enable_cpu_ax(struc
+@@ -4207,10 +4252,9 @@ static int rtw89_mac_enable_cpu_ax(struc
  
  static void rtw89_mac_hci_func_en_ax(struct rtw89_dev *rtwdev)
  {
@@ -772,7 +1173,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val = B_AX_MAC_FUNC_EN | B_AX_DMAC_FUNC_EN | B_AX_DISPATCHER_EN |
  		      B_AX_PKT_BUF_EN | B_AX_H_AXIDMA_EN;
  	else
-@@ -4230,7 +4244,7 @@ static void rtw89_mac_dmac_func_pre_en_a
+@@ -4230,7 +4274,7 @@ static void rtw89_mac_dmac_func_pre_en_a
  		val = B_AX_DISPATCHER_CLK_EN;
  	rtw89_write32(rtwdev, R_AX_DMAC_CLK_EN, val);
  
@@ -781,7 +1182,96 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		return;
  
  	val = rtw89_read32(rtwdev, R_AX_HAXI_INIT_CFG1);
-@@ -6665,7 +6679,7 @@ bool rtw89_mac_get_ctrl_path(struct rtw8
+@@ -4492,7 +4536,8 @@ static const struct rtw89_mac_mu_gid_add
+ };
+ 
+ static void rtw89_mac_check_packet_ctrl(struct rtw89_dev *rtwdev,
+-					struct rtw89_vif_link *rtwvif_link, u8 type)
++					struct rtw89_vif_link *rtwvif_link,
++					u8 type, u32 timeout_us)
+ {
+ 	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
+ 	const struct rtw89_port_reg *p = mac->port_base;
+@@ -4508,17 +4553,19 @@ static void rtw89_mac_check_packet_ctrl(
+ 	rtw89_write32_set(rtwdev, reg_ctrl, B_AX_PTCL_DBG_EN);
+ 	fsleep(100);
+ 
+-	ret = read_poll_timeout(rtw89_read32_mask, val, val == 0, 1000, 100000,
+-				true, rtwdev, reg_info, mask);
++	ret = read_poll_timeout(rtw89_read32_mask, val, val == 0, 1000,
++				timeout_us, true, rtwdev, reg_info, mask);
+ 	if (ret)
+ 		rtw89_warn(rtwdev, "Polling beacon packet empty fail\n");
+ }
+ 
+ static void rtw89_mac_bcn_drop(struct rtw89_dev *rtwdev,
+-			       struct rtw89_vif_link *rtwvif_link)
++			       struct rtw89_vif_link *rtwvif_link,
++			       u16 beacon_int)
+ {
+ 	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
+ 	const struct rtw89_port_reg *p = mac->port_base;
++	u32 timeout_us = max_t(u32, 100000, (u32)beacon_int * 1100 + 50000);
+ 
+ 	rtw89_write32_set(rtwdev, p->bcn_drop_all, BIT(rtwvif_link->port));
+ 	rtw89_write32_port_mask(rtwdev, rtwvif_link, p->tbtt_prohib, B_AX_TBTT_SETUP_MASK,
+@@ -4534,9 +4581,11 @@ static void rtw89_mac_bcn_drop(struct rt
+ 				B_AX_BCN_SPACE_MASK, 1);
+ 	rtw89_write32_port_set(rtwdev, rtwvif_link, p->port_cfg, B_AX_BCNTX_EN);
+ 
+-	rtw89_mac_check_packet_ctrl(rtwdev, rtwvif_link, AX_PTCL_DBG_BCNQ_NUM0);
++	rtw89_mac_check_packet_ctrl(rtwdev, rtwvif_link, AX_PTCL_DBG_BCNQ_NUM0,
++				    timeout_us);
+ 	if (rtwvif_link->port == RTW89_PORT_0)
+-		rtw89_mac_check_packet_ctrl(rtwdev, rtwvif_link, AX_PTCL_DBG_BCNQ_NUM1);
++		rtw89_mac_check_packet_ctrl(rtwdev, rtwvif_link,
++					    AX_PTCL_DBG_BCNQ_NUM1, timeout_us);
+ 
+ 	rtw89_write32_clr(rtwdev, p->bcn_drop_all, BIT(rtwvif_link->port));
+ 	rtw89_write32_port_clr(rtwdev, rtwvif_link, p->port_cfg, B_AX_TBTT_PROHIB_EN);
+@@ -4567,13 +4616,20 @@ static void rtw89_mac_port_cfg_func_sw(s
+ 	if (!rtw89_read32_port_mask(rtwdev, rtwvif_link, p->port_cfg, B_AX_PORT_FUNC_EN))
+ 		return;
+ 
++	rcu_read_lock();
++
++	bss_conf = rtw89_vif_rcu_dereference_link(rtwvif_link, true);
++	beacon_int = bss_conf->beacon_int ?: BCN_INTERVAL;
++
++	rcu_read_unlock();
++
+ 	if (chip->chip_id == RTL8852A && rtwvif_link->port != RTW89_PORT_0) {
+ 		need_backup = true;
+ 		backup_val = rtw89_read32_port(rtwdev, rtwvif_link, p->tbtt_prohib);
+ 	}
+ 
+ 	if (rtwvif_link->net_type == RTW89_NET_TYPE_AP_MODE)
+-		rtw89_mac_bcn_drop(rtwdev, rtwvif_link);
++		rtw89_mac_bcn_drop(rtwdev, rtwvif_link, beacon_int);
+ 
+ 	if (chip->chip_id == RTL8852A) {
+ 		rtw89_write32_port_clr(rtwdev, rtwvif_link, p->tbtt_prohib,
+@@ -4586,18 +4642,12 @@ static void rtw89_mac_port_cfg_func_sw(s
+ 				       B_AX_BCNERLY_MASK);
+ 	}
+ 
+-	rcu_read_lock();
+-
+-	bss_conf = rtw89_vif_rcu_dereference_link(rtwvif_link, true);
+-	beacon_int = bss_conf->beacon_int;
+-
+-	rcu_read_unlock();
+-
+ 	msleep(beacon_int + 1);
+ 	rtw89_write32_port_clr(rtwdev, rtwvif_link, p->port_cfg, B_AX_PORT_FUNC_EN |
+ 							    B_AX_BRK_SETUP);
+ 	rtw89_write32_port_set(rtwdev, rtwvif_link, p->port_cfg, B_AX_TSFTR_RST);
+ 	rtw89_write32_port(rtwdev, rtwvif_link, p->bcn_cnt_tmr, 0);
++	rtwvif_link->rand_tsf_done = false;
+ 
+ 	if (need_backup)
+ 		rtw89_write32_port(rtwdev, rtwvif_link, p->tbtt_prohib, backup_val);
+@@ -6665,7 +6715,7 @@ bool rtw89_mac_get_ctrl_path(struct rtw8
  	const struct rtw89_chip_info *chip = rtwdev->chip;
  	u8 val = 0;
  
@@ -790,6 +1280,201 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		return false;
  	else if (chip->chip_id == RTL8852A || rtw89_is_rtl885xb(rtwdev))
  		val = rtw89_read8_mask(rtwdev, R_AX_SYS_SDIO_CTRL + 3,
+Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac80211.c
+===================================================================
+--- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/mac80211.c
++++ backports-7.2/drivers/net/wireless/realtek/rtw89/mac80211.c
+@@ -87,10 +87,19 @@ static int rtw89_ops_config(struct ieee8
+ 	    !(hw->conf.flags & IEEE80211_CONF_IDLE))
+ 		rtw89_leave_ips(rtwdev);
+ 
++	if (changed & IEEE80211_CONF_CHANGE_POWER)
++		rtw89_core_update_txpwr_limit(rtwdev);
++
+ 	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
++		if (rtwdev->scanning)
++			rtw89_phy_survey_collect(rtwdev, false);
+ 		rtw89_config_entity_chandef(rtwdev, RTW89_CHANCTX_0,
+ 					    &hw->conf.chandef);
+ 		rtw89_set_channel(rtwdev);
++		if (rtwdev->scanning)
++			rtw89_phy_survey_trigger(rtwdev, 30);
++	} else if (changed & IEEE80211_CONF_CHANGE_POWER) {
++		rtw89_core_set_chip_txpwr(rtwdev);
+ 	}
+ 
+ 	if ((changed & IEEE80211_CONF_CHANGE_IDLE) &&
+@@ -275,6 +284,7 @@ bottom:
+ 
+ 	rtwdev->pure_monitor_mode_vif = NULL;
+ 
++	rtw89_core_recalc_txpwr(rtwdev);
+ 	rtw89_recalc_lps(rtwdev);
+ 	rtw89_enter_ips_by_hwflags(rtwdev);
+ }
+@@ -795,6 +805,9 @@ static void rtw89_ops_link_info_changed(
+ 
+ 	if (changed & BSS_CHANGED_TPE)
+ 		rtw89_reg_6ghz_recalc(rtwdev, rtwvif_link, true);
++
++	if (changed & BSS_CHANGED_TXPOWER)
++		rtw89_core_recalc_txpwr(rtwdev);
+ }
+ 
+ static int rtw89_ops_start_ap(struct ieee80211_hw *hw,
+@@ -831,6 +844,7 @@ static int rtw89_ops_start_ap(struct iee
+ 	rtw89_fw_h2c_role_maintain(rtwdev, rtwvif_link, NULL, RTW89_ROLE_TYPE_CHANGE);
+ 	rtw89_fw_h2c_join_info(rtwdev, rtwvif_link, NULL, true);
+ 	rtw89_fw_h2c_cam(rtwdev, rtwvif_link, NULL, NULL, RTW89_ROLE_TYPE_CHANGE);
++	rtw89_core_recalc_txpwr(rtwdev);
+ 	rtw89_chip_rfk_channel(rtwdev, rtwvif_link);
+ 
+ 	if (RTW89_CHK_FW_FEATURE(NOTIFY_AP_INFO, &rtwdev->fw)) {
+@@ -868,6 +882,7 @@ void rtw89_ops_stop_ap(struct ieee80211_
+ 	rtw89_mac_stop_ap(rtwdev, rtwvif_link);
+ 	rtw89_chip_h2c_assoc_cmac_tbl(rtwdev, rtwvif_link, NULL);
+ 	rtw89_fw_h2c_join_info(rtwdev, rtwvif_link, NULL, true);
++	rtw89_core_recalc_txpwr(rtwdev);
+ }
+ 
+ static int rtw89_ops_set_tim(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
+@@ -1943,33 +1958,73 @@ static int rtw89_ops_get_survey(struct i
+ {
+ 	struct ieee80211_conf *conf = &hw->conf;
+ 	struct rtw89_dev *rtwdev = hw->priv;
++	struct ieee80211_supported_band *sband;
+ 	struct rtw89_bb_ctx *bb;
++	enum rtw89_band hw_band;
++	enum nl80211_band band;
++	int ch_idx = idx;
+ 
+-	if (idx == 0) {
+-		survey->channel = conf->chandef.chan;
+-		survey->filled = SURVEY_INFO_NOISE_DBM;
+-		survey->noise = RTW89_NOISE_DEFAULT;
++	lockdep_assert_wiphy(hw->wiphy);
++
++	sband = NULL;
++	for (band = 0; band < NUM_NL80211_BANDS; band++) {
++		if (!hw->wiphy->bands[band])
++			continue;
+ 
+-		return 0;
++		if (ch_idx < hw->wiphy->bands[band]->n_channels) {
++			sband = hw->wiphy->bands[band];
++			break;
++		}
++		ch_idx -= hw->wiphy->bands[band]->n_channels;
+ 	}
+ 
+-	rtw89_for_each_active_bb(rtwdev, bb) {
++	if (!sband)
++		return -ENOENT;
++
++	memset(survey, 0, sizeof(*survey));
++	survey->channel = &sband->channels[ch_idx];
++	hw_band = rtw89_nl80211_to_hw_band(band);
++
++	rtw89_for_each_capab_bb(rtwdev, bb) {
+ 		struct rtw89_env_monitor_info *env = &bb->env_monitor;
+-		struct rtw89_nhm_report *rpt;
+ 
+-		rpt = list_first_entry_or_null(&env->nhm_rpt_list, typeof(*rpt), list);
+-		if (!rpt)
+-			continue;
++		if (env->survey[hw_band] && env->survey[hw_band][ch_idx].filled) {
++			const struct rtw89_chan_survey *cs = &env->survey[hw_band][ch_idx];
+ 
+-		survey->filled = SURVEY_INFO_NOISE_DBM;
+-		survey->noise = rpt->noise - MAX_RSSI;
+-		survey->channel = rpt->channel;
+-		list_del_init(&rpt->list);
++			survey->filled = SURVEY_INFO_TIME |
++					 SURVEY_INFO_TIME_BUSY |
++					 SURVEY_INFO_TIME_RX |
++					 SURVEY_INFO_TIME_TX |
++					 SURVEY_INFO_NOISE_DBM;
++			survey->time = cs->time_ms;
++			survey->time_busy = cs->time_busy_ms;
++			survey->time_rx = cs->time_rx_ms;
++			survey->time_tx = cs->time_tx_ms;
++			survey->noise = cs->noise;
++			break;
++		}
+ 
+-		return 0;
++		if (rtwdev->chip->support_noise && env->nhm_his[hw_band]) {
++			struct rtw89_nhm_report *rpt = &env->nhm_his[hw_band][ch_idx];
++
++			if (rpt->channel) {
++				survey->filled = SURVEY_INFO_NOISE_DBM;
++				survey->noise = rpt->noise - MAX_RSSI;
++				break;
++			}
++		}
+ 	}
+ 
+-	return -EINVAL;
++	if (survey->channel == conf->chandef.chan &&
++	    !(conf->flags & IEEE80211_CONF_IDLE)) {
++		survey->filled |= SURVEY_INFO_IN_USE;
++		if (!(survey->filled & SURVEY_INFO_NOISE_DBM)) {
++			survey->filled |= SURVEY_INFO_NOISE_DBM;
++			survey->noise = RTW89_NOISE_DEFAULT;
++		}
++	}
++
++	return 0;
+ }
+ 
+ static void rtw89_ops_rfkill_poll(struct ieee80211_hw *hw)
+@@ -1985,6 +2040,38 @@ static void rtw89_ops_rfkill_poll(struct
+ 	rtw89_core_rfkill_poll(rtwdev, false);
+ }
+ 
++static int rtw89_ops_get_txpower(struct ieee80211_hw *hw,
++				 struct ieee80211_vif *vif,
++				 unsigned int link_id, int *dbm)
++{
++	struct rtw89_dev *rtwdev = hw->priv;
++	struct rtw89_vif *rtwvif = vif_to_rtwvif(vif);
++	struct rtw89_vif_link *rtwvif_link;
++	struct ieee80211_bss_conf *bss_conf;
++	int txpower;
++
++	lockdep_assert_wiphy(hw->wiphy);
++
++	rtwvif_link = rtwvif->links[link_id];
++	if (!rtwvif_link)
++		return -ENOLINK;
++
++	rcu_read_lock();
++	bss_conf = rtw89_vif_rcu_dereference_link(rtwvif_link, false);
++	txpower = bss_conf->txpower;
++	rcu_read_unlock();
++
++	if (txpower == INT_MIN && !rtwdev->ops->assign_vif_chanctx &&
++	    hw->conf.chandef.chan)
++		txpower = hw->conf.power_level;
++
++	if (txpower == INT_MIN)
++		return -EINVAL;
++
++	*dbm = txpower;
++	return 0;
++}
++
+ const struct ieee80211_ops rtw89_ops = {
+ 	.tx			= rtw89_ops_tx,
+ 	.wake_tx_queue		= rtw89_ops_wake_tx_queue,
+@@ -2011,6 +2098,7 @@ const struct ieee80211_ops rtw89_ops = {
+ 	.set_bitrate_mask	= rtw89_ops_set_bitrate_mask,
+ 	.set_antenna		= rtw89_ops_set_antenna,
+ 	.get_antenna		= rtw89_ops_get_antenna,
++	.get_txpower		= rtw89_ops_get_txpower,
+ 	.sw_scan_start		= rtw89_ops_sw_scan_start,
+ 	.sw_scan_complete	= rtw89_ops_sw_scan_complete,
+ 	.reconfig_complete	= rtw89_ops_reconfig_complete,
 Index: backports-7.2/drivers/net/wireless/realtek/rtw89/pci.c
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/pci.c
@@ -1173,7 +1858,32 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  		rf_reg_info->rf_path = rf_table->rf_path;
  		if (noio)
  			config = rtw89_phy_config_rf_reg_noio;
-@@ -2618,6 +2695,8 @@ s8 rtw89_phy_read_txpwr_limit(struct rtw
+@@ -2567,6 +2644,16 @@ static bool rtw89_phy_validate_txpwr_lim
+ 	}
+ }
+ 
++s8 rtw89_phy_get_user_txpwr_limit(struct rtw89_dev *rtwdev)
++{
++	if (rtwdev->txpower_dbm == INT_MIN)
++		return RTW89_SAR_TXPWR_MAC_MAX;
++
++	return rtw89_phy_txpwr_dbm_to_mac(rtwdev,
++					  clamp_t(int, rtwdev->txpower_dbm, -32, 32));
++}
++EXPORT_SYMBOL(rtw89_phy_get_user_txpwr_limit);
++
+ s8 rtw89_phy_read_txpwr_limit(struct rtw89_dev *rtwdev, u8 band,
+ 			      u8 bw, u8 ntx, u8 rs, u8 bf, u8 ch)
+ {
+@@ -2589,6 +2676,7 @@ s8 rtw89_phy_read_txpwr_limit(struct rtw
+ 		.center_freq = freq,
+ 		.ntx = ntx,
+ 	};
++	s8 user_lmt;
+ 	s8 cstr;
+ 
+ 	if (!rtw89_phy_validate_txpwr_limit_bw(rtwdev, band, bw)) {
+@@ -2618,6 +2706,8 @@ s8 rtw89_phy_read_txpwr_limit(struct rtw
  		lmt = (*rule_5ghz->lmt)[bw][ntx][rs][bf][RTW89_WW][ch_idx];
  		break;
  	case RTW89_BAND_6G:
@@ -1182,7 +1892,26 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  		if (has_ant_gain)
  			da_lmt = (*rule_da_6ghz->lmt)[bw][ntx][rs][bf][regd][reg6][ch_idx];
  
-@@ -2898,6 +2977,8 @@ s8 rtw89_phy_read_txpwr_limit_ru(struct
+@@ -2641,8 +2731,9 @@ s8 rtw89_phy_read_txpwr_limit(struct rtw
+ 	lmt = rtw89_phy_txpwr_rf_to_mac(rtwdev, min(lmt + offset, da_lmt));
+ 	sar = rtw89_query_sar(rtwdev, &sar_parm);
+ 	cstr = rtw89_phy_get_tpe_constraint(rtwdev, band);
++	user_lmt = rtw89_phy_get_user_txpwr_limit(rtwdev);
+ 
+-	return min3(lmt, sar, cstr);
++	return min_t(s8, min3(lmt, sar, cstr), user_lmt);
+ }
+ EXPORT_SYMBOL(rtw89_phy_read_txpwr_limit);
+ 
+@@ -2874,6 +2965,7 @@ s8 rtw89_phy_read_txpwr_limit_ru(struct
+ 		.center_freq = freq,
+ 		.ntx = ntx,
+ 	};
++	s8 user_lmt;
+ 	s8 cstr;
+ 
+ 	switch (band) {
+@@ -2898,6 +2990,8 @@ s8 rtw89_phy_read_txpwr_limit_ru(struct
  		lmt_ru = (*rule_5ghz->lmt_ru)[ru][ntx][RTW89_WW][ch_idx];
  		break;
  	case RTW89_BAND_6G:
@@ -1191,7 +1920,18 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  		if (has_ant_gain)
  			da_lmt_ru = (*rule_da_6ghz->lmt_ru)[ru][ntx][regd][reg6][ch_idx];
  
-@@ -6008,7 +6089,7 @@ static void rtw89_phy_pmac_stat_ofdm(str
+@@ -2921,8 +3015,9 @@ s8 rtw89_phy_read_txpwr_limit_ru(struct
+ 	lmt_ru = rtw89_phy_txpwr_rf_to_mac(rtwdev, min(lmt_ru + offset, da_lmt_ru));
+ 	sar = rtw89_query_sar(rtwdev, &sar_parm);
+ 	cstr = rtw89_phy_get_tpe_constraint(rtwdev, band);
++	user_lmt = rtw89_phy_get_user_txpwr_limit(rtwdev);
+ 
+-	return min3(lmt_ru, sar, cstr);
++	return min_t(s8, min3(lmt_ru, sar, cstr), user_lmt);
+ }
+ 
+ static void
+@@ -6008,7 +6103,7 @@ static void rtw89_phy_pmac_stat_ofdm(str
  	pmac->cnt_ampdu_crc_error = field_get(regs->ampdu_crc_err_mask, val);
  
  	val = rtw89_phy_read32_idx(rtwdev, regs->brk.addr, regs->brk.mask, bb->phy_idx);
@@ -1200,7 +1940,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  	    rtw89_phy_read32_idx(rtwdev, regs->brk_option.addr,
  				 regs->brk_option.mask, bb->phy_idx) == 1) {
  		u32 tmp = pmac->ofdm_phy_txon + pmac->cck_phy_txon;
-@@ -6578,7 +6659,7 @@ static u8 rtw89_nhm_weighted_avg(struct
+@@ -6578,7 +6673,7 @@ static u8 rtw89_nhm_weighted_avg(struct
  	}
  
  	if (rtwdev->chip->chip_id == RTL8852A || rtwdev->chip->chip_id == RTL8852B ||
@@ -1209,7 +1949,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  		if (env->nhm_th[RTW89_NHM_TH_NUM - 1] == RTW89_NHM_WA_TH) {
  			nhm_weight[RTW89_NHM_RPT_NUM - 1] =
  				env->nhm_th[RTW89_NHM_TH_NUM - 2] +
-@@ -6813,7 +6894,7 @@ static void rtw89_phy_nhm_th_update(stru
+@@ -6813,7 +6908,7 @@ static void rtw89_phy_nhm_th_update(stru
  		env->nhm_th[i] = nhm_th_11k[i] << RTW89_NHM_TH_FACTOR;
  
  	if (chip->chip_id == RTL8852A || chip->chip_id == RTL8852B ||
@@ -1218,7 +1958,186 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  		env->nhm_th[RTW89_NHM_TH_NUM - 1] = RTW89_NHM_WA_TH;
  
  	for (i = 0; i < RTW89_NHM_TH_NUM; i++) {
-@@ -8160,6 +8241,31 @@ static void rtw89_phy_edcca_init(struct
+@@ -6944,15 +7039,164 @@ static int rtw89_phy_ifs_clm_set(struct
+ 	return 0;
+ }
+ 
++static struct rtw89_chan_survey *
++rtw89_phy_survey_find(struct rtw89_dev *rtwdev, struct rtw89_bb_ctx *bb,
++		      const struct ieee80211_channel *chan)
++{
++	struct rtw89_env_monitor_info *env = &bb->env_monitor;
++	struct ieee80211_supported_band *sband;
++	enum rtw89_band hw_band;
++	u8 i;
++
++	if (!chan)
++		return NULL;
++
++	sband = rtwdev->hw->wiphy->bands[chan->band];
++	if (!sband)
++		return NULL;
++
++	hw_band = rtw89_nl80211_to_hw_band(chan->band);
++	if (!env->survey[hw_band])
++		return NULL;
++
++	for (i = 0; i < sband->n_channels; i++) {
++		if (&sband->channels[i] == chan ||
++		    sband->channels[i].center_freq == chan->center_freq)
++			return &env->survey[hw_band][i];
++	}
++
++	return NULL;
++}
++
++static void rtw89_phy_survey_record(struct rtw89_dev *rtwdev,
++				    struct rtw89_bb_ctx *bb,
++				    const struct ieee80211_channel *chan)
++{
++	struct rtw89_env_monitor_info *env = &bb->env_monitor;
++	struct rtw89_chan_survey *survey;
++	u64 time_ms, busy_ms, rx_ms, tx_ms;
++	u32 unit_us, total_ticks, rx_ticks, tx_ticks, busy_ticks;
++
++	survey = rtw89_phy_survey_find(rtwdev, bb, chan);
++	if (!survey || !env->ccx_period)
++		return;
++
++	unit_us = 4 << env->ccx_unit_idx;
++	total_ticks = env->ccx_period;
++	tx_ticks = env->ifs_clm_tx;
++	rx_ticks = (u32)env->ifs_clm_cckcca_excl_fa +
++		   env->ifs_clm_ofdmcca_excl_fa +
++		   env->ifs_clm_cckfa +
++		   env->ifs_clm_ofdmfa;
++	busy_ticks = min_t(u32, total_ticks,
++			   tx_ticks + rx_ticks + env->ifs_clm_edcca_excl_cca);
++
++	time_ms = DIV_ROUND_CLOSEST_ULL((u64)total_ticks * unit_us, 1000);
++	if (!time_ms)
++		return;
++
++	busy_ms = min_t(u64, time_ms,
++			DIV_ROUND_CLOSEST_ULL((u64)busy_ticks * unit_us, 1000));
++	rx_ms = min_t(u64, time_ms,
++		      DIV_ROUND_CLOSEST_ULL((u64)rx_ticks * unit_us, 1000));
++	tx_ms = min_t(u64, time_ms,
++		      DIV_ROUND_CLOSEST_ULL((u64)tx_ticks * unit_us, 1000));
++
++	survey->time_ms += time_ms;
++	survey->time_busy_ms += busy_ms;
++	survey->time_rx_ms += rx_ms;
++	survey->time_tx_ms += tx_ms;
++	survey->noise = RTW89_NOISE_DEFAULT;
++	survey->filled = true;
++}
++
++void rtw89_phy_survey_reset(struct rtw89_dev *rtwdev)
++{
++	struct ieee80211_supported_band *sband;
++	struct rtw89_bb_ctx *bb;
++	enum rtw89_band hw_band;
++	enum nl80211_band band;
++
++	rtw89_for_each_capab_bb(rtwdev, bb) {
++		struct rtw89_env_monitor_info *env = &bb->env_monitor;
++
++		env->survey_active = false;
++		env->survey_chan = NULL;
++		for (band = 0; band < NUM_NL80211_BANDS; band++) {
++			sband = rtwdev->hw->wiphy->bands[band];
++			if (!sband)
++				continue;
++
++			hw_band = rtw89_nl80211_to_hw_band(band);
++			if (!env->survey[hw_band])
++				continue;
++
++			memset(env->survey[hw_band], 0,
++			       sband->n_channels * sizeof(*env->survey[hw_band]));
++		}
++	}
++}
++
++void rtw89_phy_survey_trigger(struct rtw89_dev *rtwdev, u16 mntr_time_ms)
++{
++	const struct rtw89_phy_gen_def *phy = rtwdev->chip->phy_def;
++	struct ieee80211_conf *conf = &rtwdev->hw->conf;
++	struct rtw89_bb_ctx *bb;
++
++	if (!phy->ccx || !test_bit(RTW89_FLAG_RUNNING, rtwdev->flags))
++		return;
++
++	rtw89_for_each_active_bb(rtwdev, bb) {
++		struct rtw89_env_monitor_info *env = &bb->env_monitor;
++		struct rtw89_ccx_para_info para = {};
++
++		rtw89_phy_ccx_racing_release(rtwdev, bb);
++		para.mntr_time = mntr_time_ms;
++		para.rac_lv = RTW89_RAC_LV_2;
++		para.ifs_clm_app = RTW89_IFS_CLM_BACKGROUND;
++
++		if (rtw89_phy_ifs_clm_set(rtwdev, bb, &para) == 0) {
++			rtw89_phy_ccx_trigger(rtwdev, bb, RTW89_PHY_ENV_MON_IFS_CLM);
++			env->survey_chan = conf->chandef.chan;
++			env->survey_active = true;
++		}
++	}
++}
++
++void rtw89_phy_survey_collect(struct rtw89_dev *rtwdev, bool release)
++{
++	const struct rtw89_phy_gen_def *phy = rtwdev->chip->phy_def;
++	struct rtw89_bb_ctx *bb;
++
++	if (!phy->ccx || !test_bit(RTW89_FLAG_RUNNING, rtwdev->flags))
++		return;
++
++	rtw89_for_each_active_bb(rtwdev, bb) {
++		struct rtw89_env_monitor_info *env = &bb->env_monitor;
++
++		if (env->survey_active && env->survey_chan &&
++		    rtw89_phy_ifs_clm_get_result(rtwdev, bb)) {
++			rtw89_phy_edcca_clm_get_result(rtwdev, bb);
++			rtw89_phy_survey_record(rtwdev, bb, env->survey_chan);
++		}
++
++		env->survey_active = false;
++		env->survey_chan = NULL;
++		if (release)
++			rtw89_phy_ccx_racing_release(rtwdev, bb);
++	}
++}
++
+ static void __rtw89_phy_env_monitor_track(struct rtw89_dev *rtwdev,
+ 					  struct rtw89_bb_ctx *bb)
+ {
+ 	struct rtw89_env_monitor_info *env = &bb->env_monitor;
++	struct ieee80211_conf *conf = &rtwdev->hw->conf;
+ 	struct rtw89_ccx_para_info para = {};
+ 	u8 chk_result = RTW89_PHY_ENV_MON_CCX_FAIL;
+ 
+ 	env->ccx_watchdog_result = RTW89_PHY_ENV_MON_CCX_FAIL;
+-	if (env->ccx_manual_ctrl) {
++	if (env->ccx_manual_ctrl || rtwdev->scanning) {
+ 		rtw89_debug(rtwdev, RTW89_DBG_PHY_TRACK,
+ 			    "CCX in manual ctrl\n");
+ 		return;
+@@ -6962,8 +7206,11 @@ static void __rtw89_phy_env_monitor_trac
+ 		    "BB-%d env_monitor track\n", bb->phy_idx);
+ 
+ 	/* only ifs_clm for now */
+-	if (rtw89_phy_ifs_clm_get_result(rtwdev, bb))
++	if (rtw89_phy_ifs_clm_get_result(rtwdev, bb)) {
+ 		env->ccx_watchdog_result |= RTW89_PHY_ENV_MON_IFS_CLM;
++		if (!(conf->flags & IEEE80211_CONF_IDLE))
++			rtw89_phy_survey_record(rtwdev, bb, conf->chandef.chan);
++	}
+ 
+ 	if (rtw89_phy_edcca_clm_get_result(rtwdev, bb))
+ 		env->ccx_watchdog_result |= RTW89_PHY_ENV_MON_EDCCA_CLM;
+@@ -8160,6 +8407,31 @@ static void rtw89_phy_edcca_init(struct
  		__rtw89_phy_edcca_init(rtwdev, bb);
  }
  
@@ -1250,6 +2169,29 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.c
  void rtw89_phy_dm_init(struct rtw89_dev *rtwdev)
  {
  	rtw89_phy_stat_init(rtwdev);
+@@ -8203,15 +8475,19 @@ static void __rtw89_phy_dm_init_data(str
+ 	enum nl80211_band band;
+ 	u8 idx;
+ 
+-	if (!chip->support_noise)
+-		return;
+-
+ 	for (band = 0; band < NUM_NL80211_BANDS; band++) {
+ 		sband = rtwdev->hw->wiphy->bands[band];
+ 		if (!sband)
+ 			continue;
+ 
+ 		hw_band = rtw89_nl80211_to_hw_band(band);
++		env->survey[hw_band] =
++			devm_kcalloc(rtwdev->dev, sband->n_channels,
++				     sizeof(*env->survey[0]), GFP_KERNEL);
++
++		if (!chip->support_noise)
++			continue;
++
+ 		env->nhm_his[hw_band] =
+ 			devm_kcalloc(rtwdev->dev, sband->n_channels,
+ 				     sizeof(*env->nhm_his[0]), GFP_KERNEL);
 Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.h
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/phy.h
@@ -1265,6 +2207,23 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/phy.h
  void rtw89_phy_dm_reinit(struct rtw89_dev *rtwdev);
  void rtw89_phy_dm_init_data(struct rtw89_dev *rtwdev);
  void rtw89_physts_parsing_init(struct rtw89_dev *rtwdev);
+@@ -1032,6 +1036,7 @@ int rtw89_print_ant_gain(struct rtw89_de
+ 			 const struct rtw89_chan *chan);
+ void rtw89_phy_load_txpwr_byrate(struct rtw89_dev *rtwdev,
+ 				 const struct rtw89_txpwr_table *tbl);
++s8 rtw89_phy_get_user_txpwr_limit(struct rtw89_dev *rtwdev);
+ s8 rtw89_phy_read_txpwr_limit(struct rtw89_dev *rtwdev, u8 band,
+ 			      u8 bw, u8 ntx, u8 rs, u8 bf, u8 ch);
+ s8 rtw89_phy_read_txpwr_limit_ru(struct rtw89_dev *rtwdev, u8 band,
+@@ -1251,5 +1256,8 @@ void rtw89_phy_nhm_setting_init(struct r
+ void rtw89_phy_nhm_get_result(struct rtw89_dev *rtwdev, enum rtw89_band hw_band,
+ 			      u16 ch_hw_value);
+ void rtw89_phy_nhm_trigger(struct rtw89_dev *rtwdev);
++void rtw89_phy_survey_reset(struct rtw89_dev *rtwdev);
++void rtw89_phy_survey_trigger(struct rtw89_dev *rtwdev, u16 mntr_time_ms);
++void rtw89_phy_survey_collect(struct rtw89_dev *rtwdev, bool release);
+ 
+ #endif
 Index: backports-7.2/drivers/net/wireless/realtek/rtw89/reg.h
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/reg.h
@@ -1324,7 +2283,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/regd.c
  	if (skip_acpi_dsm)
  		goto bottom;
  
-@@ -642,8 +659,10 @@ static void rtw89_regd_setup_6ghz(struct
+@@ -642,8 +659,10 @@ bottom:
  		return;
  
  	wiphy->bands[NL80211_BAND_6GHZ] = NULL;
@@ -1337,6 +2296,57 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/regd.c
  }
  
  #define RTW89_DEF_REGD_STR(regd) \
+Index: backports-7.2/drivers/net/wireless/realtek/rtw89/ser.c
+===================================================================
+--- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/ser.c
++++ backports-7.2/drivers/net/wireless/realtek/rtw89/ser.c
+@@ -284,6 +284,7 @@ static void drv_resume_tx(struct rtw89_s
+ 
+ 	ieee80211_wake_queues(rtwdev->hw);
+ 	clear_bit(RTW89_SER_DRV_STOP_TX, ser->flags);
++	queue_work(rtwdev->txq_wq, &rtwdev->txq_work);
+ }
+ 
+ static void drv_resume_rx(struct rtw89_ser *ser)
+@@ -449,6 +450,8 @@ static void ser_idle_st_hdl(struct rtw89
+ 		rtw89_hci_recovery_complete(rtwdev);
+ 		clear_bit(RTW89_FLAG_SER_HANDLING, rtwdev->flags);
+ 		clear_bit(RTW89_FLAG_CRASH_SIMULATING, rtwdev->flags);
++		if (test_bit(RTW89_FLAG_RUNNING, rtwdev->flags))
++			queue_work(rtwdev->txq_wq, &rtwdev->txq_work);
+ 		break;
+ 	case SER_EV_L1_RESET_PREPARE:
+ 		ser_state_goto(ser, SER_L1_RESET_PRE_ST);
+@@ -510,6 +513,10 @@ static void ser_reset_trx_st_hdl(struct
+ 		}
+ 
+ 		drv_stop_rx(ser);
++		synchronize_rcu();
++		cancel_work_sync(&rtwdev->txq_work);
++		cancel_delayed_work_sync(&rtwdev->txq_reinvoke_work);
++		cancel_work_sync(&rtwdev->txq_work);
+ 		wiphy_lock(wiphy);
+ 		drv_trx_reset(ser);
+ 		wiphy_unlock(wiphy);
+@@ -717,8 +724,9 @@ static void ser_l2_reset_st_pre_hdl(stru
+ bottom:
+ 	rtw89_ser_cd_free(rtwdev, buf, !!ret);
+ 
+-	ser_reset_mac_binding(rtwdev);
++	drv_stop_tx(ser);
+ 	rtw89_core_stop(rtwdev);
++	ser_reset_mac_binding(rtwdev);
+ 	rtw89_entity_init(rtwdev);
+ 	rtw89_fw_release_general_pkt_list(rtwdev, false);
+ 	INIT_LIST_HEAD(&rtwdev->rtwvifs_list);
+@@ -736,6 +744,7 @@ static void ser_l2_reset_st_hdl(struct r
+ 		wiphy_unlock(rtwdev->hw->wiphy);
+ 
+ 		ieee80211_restart_hw(rtwdev->hw);
++		drv_resume_tx(ser);
+ 		ser_set_alarm(ser, SER_RECFG_TIMEOUT, SER_EV_L2_RECFG_TIMEOUT);
+ 		break;
+ 
 Index: backports-7.2/drivers/net/wireless/realtek/rtw89/coex.c
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/coex.c
