@@ -849,7 +849,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/mac.c
 +++ backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
-@@ -342,7 +342,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -342,7 +342,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  			   rtw89_read32(rtwdev, R_AX_WDE_ERR_FLAG_CFG_NUM1));
  		rtw89_info(rtwdev, "R_AX_PLE_ERR_FLAG_CFG=0x%08x\n",
  			   rtw89_read32(rtwdev, R_AX_PLE_ERR_FLAG_CFG_NUM1));
@@ -858,7 +858,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_PLE_ERRFLAG_MSG=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_PLE_ERRFLAG_MSG));
  			rtw89_info(rtwdev, "R_AX_WDE_ERRFLAG_MSG=0x%08x\n",
-@@ -359,7 +359,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -359,7 +359,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  			   rtw89_read32(rtwdev, R_AX_WDRLS_ERR_IMR));
  		rtw89_info(rtwdev, "R_AX_WDRLS_ERR_ISR=0x%08x\n",
  			   rtw89_read32(rtwdev, R_AX_WDRLS_ERR_ISR));
@@ -867,7 +867,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_RPQ_RXBD_IDX=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_RPQ_RXBD_IDX_V1));
  		else
-@@ -368,7 +368,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -368,7 +368,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  	}
  
  	if (dmac_err & B_AX_WSEC_ERR_FLAG) {
@@ -876,7 +876,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_SEC_ERR_IMR=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_SEC_ERROR_FLAG_IMR));
  			rtw89_info(rtwdev, "R_AX_SEC_ERR_ISR=0x%08x\n",
-@@ -476,7 +476,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -476,7 +476,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  	}
  
  	if (dmac_err & B_AX_TXPKTCTRL_ERR_FLAG) {
@@ -885,7 +885,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_TXPKTCTL_B0_ERRFLAG_IMR=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_TXPKTCTL_B0_ERRFLAG_IMR));
  			rtw89_info(rtwdev, "R_AX_TXPKTCTL_B0_ERRFLAG_ISR=0x%08x\n",
-@@ -528,7 +528,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -528,7 +528,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  				   rtw89_read32(rtwdev, R_AX_WD_CPUQ_OP_STATUS));
  			rtw89_info(rtwdev, "R_AX_PL_CPUQ_OP_STATUS=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_PL_CPUQ_OP_STATUS));
@@ -894,7 +894,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  				rtw89_info(rtwdev, "R_AX_RX_CTRL0=0x%08x\n",
  					   rtw89_read32(rtwdev, R_AX_RX_CTRL0));
  				rtw89_info(rtwdev, "R_AX_RX_CTRL1=0x%08x\n",
-@@ -584,7 +584,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -584,7 +584,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  	}
  
  	if (dmac_err & B_AX_BBRPT_ERR_FLAG) {
@@ -903,7 +903,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_BBRPT_COM_ERR_IMR=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_BBRPT_COM_ERR_IMR));
  			rtw89_info(rtwdev, "R_AX_BBRPT_COM_ERR_ISR=0x%08x\n",
-@@ -623,7 +623,7 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -623,7 +623,7 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  				   rtw89_read32(rtwdev, R_BE_HAXI_IDCT_MSK));
  			rtw89_info(rtwdev, "R_BE_HAXI_IDCT=0x%08x\n",
  				   rtw89_read32(rtwdev, R_BE_HAXI_IDCT));
@@ -912,7 +912,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_HAXIDMA_ERR_IMR=0x%08x\n",
  				   rtw89_read32(rtwdev, R_AX_HAXI_IDCT_MSK));
  			rtw89_info(rtwdev, "R_AX_HAXIDMA_ERR_ISR=0x%08x\n",
-@@ -658,7 +658,6 @@ void rtw89_mac_dump_dmac_err_status(stru
+@@ -658,7 +658,6 @@ void rtw89_mac_dump_dmac_err_status(struct rtw89_dev *rtwdev)
  static void rtw89_mac_dump_cmac_err_status_ax(struct rtw89_dev *rtwdev,
  					      u8 band)
  {
@@ -920,7 +920,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	u32 offset = 0;
  	u32 cmac_err;
  	int ret;
-@@ -698,7 +697,7 @@ static void rtw89_mac_dump_cmac_err_stat
+@@ -698,7 +697,7 @@ static void rtw89_mac_dump_cmac_err_status_ax(struct rtw89_dev *rtwdev,
  	}
  
  	if (cmac_err & B_AX_DMA_TOP_ERR_IND) {
@@ -929,7 +929,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_RX_ERR_FLAG [%d]=0x%08x\n", band,
  				   rtw89_read32(rtwdev, R_AX_RX_ERR_FLAG + offset));
  			rtw89_info(rtwdev, "R_AX_RX_ERR_FLAG_IMR [%d]=0x%08x\n", band,
-@@ -710,7 +709,7 @@ static void rtw89_mac_dump_cmac_err_stat
+@@ -710,7 +709,7 @@ static void rtw89_mac_dump_cmac_err_status_ax(struct rtw89_dev *rtwdev,
  	}
  
  	if (cmac_err & B_AX_DMA_TOP_ERR_IND || cmac_err & B_AX_WMAC_RX_ERR_IND) {
@@ -938,7 +938,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_PHYINFO_ERR_ISR [%d]=0x%08x\n", band,
  				   rtw89_read32(rtwdev, R_AX_PHYINFO_ERR_ISR + offset));
  			rtw89_info(rtwdev, "R_AX_PHYINFO_ERR_IMR [%d]=0x%08x\n", band,
-@@ -729,7 +728,7 @@ static void rtw89_mac_dump_cmac_err_stat
+@@ -729,7 +728,7 @@ static void rtw89_mac_dump_cmac_err_status_ax(struct rtw89_dev *rtwdev,
  	}
  
  	if (cmac_err & B_AX_WMAC_TX_ERR_IND) {
@@ -947,7 +947,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  			rtw89_info(rtwdev, "R_AX_TRXPTCL_ERROR_INDICA [%d]=0x%08x\n", band,
  				   rtw89_read32(rtwdev, R_AX_TRXPTCL_ERROR_INDICA + offset));
  			rtw89_info(rtwdev, "R_AX_TRXPTCL_ERROR_INDICA_MASK [%d]=0x%08x\n", band,
-@@ -784,7 +783,7 @@ static bool rtw89_mac_suppress_log(struc
+@@ -784,7 +783,7 @@ static bool rtw89_mac_suppress_log(struct rtw89_dev *rtwdev, u32 err)
  	u32 dmac_err, imr, isr;
  	int ret;
  
@@ -956,7 +956,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		ret = rtw89_mac_check_mac_en(rtwdev, 0, RTW89_DMAC_SEL);
  		if (ret)
  			return true;
-@@ -1654,7 +1653,7 @@ static int dmac_func_en_ax(struct rtw89_
+@@ -1654,7 +1653,7 @@ static int dmac_func_en_ax(struct rtw89_dev *rtwdev)
  	enum rtw89_core_chip_id chip_id = rtwdev->chip->chip_id;
  	u32 val32;
  
@@ -965,7 +965,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val32 = (B_AX_MAC_FUNC_EN | B_AX_DMAC_FUNC_EN |
  			 B_AX_MAC_SEC_EN | B_AX_DISPATCHER_EN |
  			 B_AX_DLE_CPUIO_EN | B_AX_PKT_IN_EN |
-@@ -2207,7 +2206,7 @@ static void ple_quota_cfg_ax(struct rtw8
+@@ -2207,7 +2206,7 @@ static void ple_quota_cfg_ax(struct rtw89_dev *rtwdev,
  	SET_QUOTA(bb_rpt, PLE, 8);
  	SET_QUOTA(wd_rel, PLE, 9);
  	SET_QUOTA(cpu_io, PLE, 10);
@@ -974,7 +974,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		SET_QUOTA(tx_rpt, PLE, 11);
  }
  
-@@ -2217,7 +2216,7 @@ int rtw89_mac_resize_ple_rx_quota(struct
+@@ -2217,7 +2216,7 @@ int rtw89_mac_resize_ple_rx_quota(struct rtw89_dev *rtwdev, bool wow)
  	const struct rtw89_dle_mem *cfg;
  	u32 val;
  
@@ -983,7 +983,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		return 0;
  
  	if (rtwdev->mac.qta_mode != RTW89_QTA_SCC) {
-@@ -2245,14 +2244,13 @@ int rtw89_mac_resize_ple_rx_quota(struct
+@@ -2245,14 +2244,13 @@ int rtw89_mac_resize_ple_rx_quota(struct rtw89_dev *rtwdev, bool wow)
  
  void rtw89_mac_hw_mgnt_sec(struct rtw89_dev *rtwdev, bool enable)
  {
@@ -999,7 +999,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		msk32 = B_AX_BMC_MGNT_DEC;
  
  	if (enable)
-@@ -2385,6 +2383,33 @@ int rtw89_mac_preload_init(struct rtw89_
+@@ -2385,6 +2383,33 @@ int rtw89_mac_preload_init(struct rtw89_dev *rtwdev, enum rtw89_mac_idx mac_idx,
  	return mac->preload_init(rtwdev, mac_idx, mode);
  }
  
@@ -1033,7 +1033,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  static bool dle_is_txq_empty(struct rtw89_dev *rtwdev)
  {
  	u32 msk32;
-@@ -2403,6 +2428,9 @@ static bool dle_is_txq_empty(struct rtw8
+@@ -2403,6 +2428,9 @@ static bool dle_is_txq_empty(struct rtw89_dev *rtwdev)
  		B_AX_PLE_EMPTY_QTA_DMAC_CPUIO |
  		B_AX_WDE_EMPTY_QTA_DMAC_DATA_CPU |
  		B_AX_PLE_EMPTY_QTA_DMAC_WLAN_CPU;
@@ -1043,7 +1043,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	val32 = rtw89_read32(rtwdev, R_AX_DLE_EMPTY0);
  
  	if ((val32 & msk32) == msk32)
-@@ -2494,7 +2522,7 @@ static int sec_eng_init_ax(struct rtw89_
+@@ -2494,7 +2522,7 @@ static int sec_eng_init_ax(struct rtw89_dev *rtwdev)
  	/* init TX encryption */
  	val |= (B_AX_SEC_TX_ENC | B_AX_SEC_RX_DEC);
  	val |= (B_AX_MC_DEC | B_AX_BC_DEC);
@@ -1052,7 +1052,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val |= B_AX_UC_MGNT_DEC;
  	if (chip->chip_id == RTL8852A || chip->chip_id == RTL8852B ||
  	    chip->chip_id == RTL8851B ||
-@@ -2509,7 +2537,7 @@ static int sec_eng_init_ax(struct rtw89_
+@@ -2509,7 +2537,7 @@ static int sec_eng_init_ax(struct rtw89_dev *rtwdev)
  	/* option init */
  	rtw89_write32(rtwdev, R_AX_SEC_MPDU_PROC, val);
  
@@ -1061,7 +1061,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_mask(rtwdev, R_AX_SEC_DEBUG1,
  				   B_AX_TX_TIMEOUT_SEL_MASK, AX_TX_TO_VAL);
  
-@@ -2601,7 +2629,7 @@ static int scheduler_init_ax(struct rtw8
+@@ -2601,7 +2629,7 @@ static int scheduler_init_ax(struct rtw89_dev *rtwdev, u8 mac_idx)
  	rtw89_io_pack(rtwdev);
  
  	reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_PREBKF_CFG_1, mac_idx);
@@ -1070,7 +1070,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_mask(rtwdev, reg, B_AX_SIFS_MACTXEN_T1_MASK,
  				   SIFS_MACTXEN_T1_V1);
  	else
-@@ -2617,7 +2645,7 @@ static int scheduler_init_ax(struct rtw8
+@@ -2617,7 +2645,7 @@ static int scheduler_init_ax(struct rtw89_dev *rtwdev, u8 mac_idx)
  	rtw89_write32_clr(rtwdev, reg, B_AX_BTCCA_EN);
  
  	reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_PREBKF_CFG_0, mac_idx);
@@ -1079,7 +1079,23 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val = rtw89_read32_mask(rtwdev, R_AX_SEC_ENG_CTRL,
  					B_AX_TX_PARTIAL_MODE);
  		if (!val)
-@@ -3319,11 +3347,31 @@ static int rtw89_mac_setup_phycap_part1(
+@@ -2975,6 +3003,15 @@ static int rmac_init_ax(struct rtw89_dev *rtwdev, u8 mac_idx)
+ 	reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_PLCP_HDR_FLTR, mac_idx);
+ 	rtw89_write8_clr(rtwdev, reg, B_AX_VHT_SU_SIGB_CRC_CHK);
+ 
++	if (rtw89_is_ap_fw(rtwdev) &&
++	    !ieee80211_hw_check(rtwdev->hw, AP_LINK_PS)) {
++		reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_RX_PM_CTRL, mac_idx);
++		rtw89_write32_clr(rtwdev, reg, B_AX_RX_PM_EN);
++
++		reg = rtw89_mac_reg_by_idx(rtwdev, R_AX_FWC00IMR, mac_idx);
++		rtw89_write32_clr(rtwdev, reg, B_AX_FWC00IMR_PWR_INT_MASK);
++	}
++
+ 	rtw89_io_unpack(rtwdev);
+ 
+ 	return ret;
+@@ -3319,11 +3356,31 @@ static int rtw89_mac_setup_phycap_part1(struct rtw89_dev *rtwdev)
  	return 0;
  }
  
@@ -1111,7 +1127,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	ret = rtw89_mac_setup_phycap_part0(rtwdev);
  	if (ret)
  		return ret;
-@@ -3753,7 +3801,6 @@ static void rtw89_wsec_imr_enable(struct
+@@ -3753,7 +3810,6 @@ static void rtw89_wsec_imr_enable(struct rtw89_dev *rtwdev)
  
  static void rtw89_mpdu_trx_imr_enable(struct rtw89_dev *rtwdev)
  {
@@ -1119,7 +1135,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	const struct rtw89_imr_info *imr = rtwdev->chip->imr_info;
  
  	rtw89_write32_clr(rtwdev, R_AX_MPDU_TX_ERR_IMR,
-@@ -3762,7 +3809,7 @@ static void rtw89_mpdu_trx_imr_enable(st
+@@ -3762,7 +3818,7 @@ static void rtw89_mpdu_trx_imr_enable(struct rtw89_dev *rtwdev)
  			  B_AX_TX_MPDU_SIZE_ZERO_INT_EN |
  			  B_AX_TX_OFFSET_ERR_INT_EN |
  			  B_AX_TX_HDR3_SIZE_ERR_INT_EN);
@@ -1128,7 +1144,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_clr(rtwdev, R_AX_MPDU_TX_ERR_IMR,
  				  B_AX_TX_ETH_TYPE_ERR_EN |
  				  B_AX_TX_LLC_PRE_ERR_EN |
-@@ -3889,14 +3936,13 @@ static void rtw89_ptcl_imr_enable(struct
+@@ -3889,14 +3945,13 @@ static void rtw89_ptcl_imr_enable(struct rtw89_dev *rtwdev, u8 mac_idx)
  static void rtw89_cdma_imr_enable(struct rtw89_dev *rtwdev, u8 mac_idx)
  {
  	const struct rtw89_imr_info *imr = rtwdev->chip->imr_info;
@@ -1144,7 +1160,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		reg = rtw89_mac_reg_by_idx(rtwdev, imr->cdma_imr_1_reg, mac_idx);
  		rtw89_write32_clr(rtwdev, reg, imr->cdma_imr_1_clr);
  		rtw89_write32_set(rtwdev, reg, imr->cdma_imr_1_set);
-@@ -4028,7 +4074,6 @@ static int set_host_rpr_ax(struct rtw89_
+@@ -4028,7 +4083,6 @@ static int set_host_rpr_ax(struct rtw89_dev *rtwdev)
  
  static int trx_init_ax(struct rtw89_dev *rtwdev)
  {
@@ -1152,7 +1168,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  	enum rtw89_qta_mode qta_mode = rtwdev->mac.qta_mode;
  	int ret;
  
-@@ -4072,7 +4117,7 @@ static int trx_init_ax(struct rtw89_dev
+@@ -4072,7 +4126,7 @@ static int trx_init_ax(struct rtw89_dev *rtwdev)
  		return ret;
  	}
  
@@ -1161,7 +1177,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		rtw89_write32_clr(rtwdev, R_AX_RSP_CHK_SIG,
  				  B_AX_RSP_STATIC_RTS_CHK_SERV_BW_EN);
  
-@@ -4207,10 +4252,9 @@ static int rtw89_mac_enable_cpu_ax(struc
+@@ -4207,10 +4261,9 @@ static int rtw89_mac_enable_cpu_ax(struct rtw89_dev *rtwdev, u8 boot_reason,
  
  static void rtw89_mac_hci_func_en_ax(struct rtw89_dev *rtwdev)
  {
@@ -1173,7 +1189,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		val = B_AX_MAC_FUNC_EN | B_AX_DMAC_FUNC_EN | B_AX_DISPATCHER_EN |
  		      B_AX_PKT_BUF_EN | B_AX_H_AXIDMA_EN;
  	else
-@@ -4230,7 +4274,7 @@ static void rtw89_mac_dmac_func_pre_en_a
+@@ -4230,7 +4283,7 @@ static void rtw89_mac_dmac_func_pre_en_ax(struct rtw89_dev *rtwdev)
  		val = B_AX_DISPATCHER_CLK_EN;
  	rtw89_write32(rtwdev, R_AX_DMAC_CLK_EN, val);
  
@@ -1182,7 +1198,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  		return;
  
  	val = rtw89_read32(rtwdev, R_AX_HAXI_INIT_CFG1);
-@@ -4492,7 +4536,8 @@ static const struct rtw89_mac_mu_gid_add
+@@ -4492,7 +4545,8 @@ static const struct rtw89_mac_mu_gid_addr rtw89_mac_mu_gid_addr_ax = {
  };
  
  static void rtw89_mac_check_packet_ctrl(struct rtw89_dev *rtwdev,
@@ -1192,7 +1208,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  {
  	const struct rtw89_mac_gen_def *mac = rtwdev->chip->mac_def;
  	const struct rtw89_port_reg *p = mac->port_base;
-@@ -4508,17 +4553,19 @@ static void rtw89_mac_check_packet_ctrl(
+@@ -4508,17 +4562,19 @@ static void rtw89_mac_check_packet_ctrl(struct rtw89_dev *rtwdev,
  	rtw89_write32_set(rtwdev, reg_ctrl, B_AX_PTCL_DBG_EN);
  	fsleep(100);
  
@@ -1215,7 +1231,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  
  	rtw89_write32_set(rtwdev, p->bcn_drop_all, BIT(rtwvif_link->port));
  	rtw89_write32_port_mask(rtwdev, rtwvif_link, p->tbtt_prohib, B_AX_TBTT_SETUP_MASK,
-@@ -4534,9 +4581,11 @@ static void rtw89_mac_bcn_drop(struct rt
+@@ -4534,9 +4590,11 @@ static void rtw89_mac_bcn_drop(struct rtw89_dev *rtwdev,
  				B_AX_BCN_SPACE_MASK, 1);
  	rtw89_write32_port_set(rtwdev, rtwvif_link, p->port_cfg, B_AX_BCNTX_EN);
  
@@ -1229,7 +1245,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  
  	rtw89_write32_clr(rtwdev, p->bcn_drop_all, BIT(rtwvif_link->port));
  	rtw89_write32_port_clr(rtwdev, rtwvif_link, p->port_cfg, B_AX_TBTT_PROHIB_EN);
-@@ -4567,13 +4616,20 @@ static void rtw89_mac_port_cfg_func_sw(s
+@@ -4567,13 +4625,20 @@ static void rtw89_mac_port_cfg_func_sw(struct rtw89_dev *rtwdev,
  	if (!rtw89_read32_port_mask(rtwdev, rtwvif_link, p->port_cfg, B_AX_PORT_FUNC_EN))
  		return;
  
@@ -1251,7 +1267,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  
  	if (chip->chip_id == RTL8852A) {
  		rtw89_write32_port_clr(rtwdev, rtwvif_link, p->tbtt_prohib,
-@@ -4586,18 +4642,12 @@ static void rtw89_mac_port_cfg_func_sw(s
+@@ -4586,18 +4651,12 @@ static void rtw89_mac_port_cfg_func_sw(struct rtw89_dev *rtwdev,
  				       B_AX_BCNERLY_MASK);
  	}
  
@@ -1271,7 +1287,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/mac.c
  
  	if (need_backup)
  		rtw89_write32_port(rtwdev, rtwvif_link, p->tbtt_prohib, backup_val);
-@@ -6665,7 +6715,7 @@ bool rtw89_mac_get_ctrl_path(struct rtw8
+@@ -6665,7 +6724,7 @@ bool rtw89_mac_get_ctrl_path(struct rtw89_dev *rtwdev)
  	const struct rtw89_chip_info *chip = rtwdev->chip;
  	u8 val = 0;
  
@@ -2228,7 +2244,29 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/reg.h
 ===================================================================
 --- backports-7.2.orig/drivers/net/wireless/realtek/rtw89/reg.h
 +++ backports-7.2/drivers/net/wireless/realtek/rtw89/reg.h
-@@ -9868,6 +9868,10 @@
+@@ -2199,6 +2199,10 @@
+ #define B_AX_RSC_MASK GENMASK(7, 6)
+ #define B_AX_RRSR_CCK_MASK GENMASK(3, 0)
+ 
++#define R_AX_FWC00IMR 0xC100
++#define R_AX_FWC00IMR_C1 0xE100
++#define B_AX_FWC00IMR_PWR_INT_MASK GENMASK(15, 12)
++
+ #define R_AX_CMAC_ERR_IMR 0xC160
+ #define R_AX_CMAC_ERR_IMR_C1 0xE160
+ #define B_AX_WMAC_TX_ERR_IND_EN BIT(7)
+@@ -3405,6 +3409,10 @@
+ #define R_AX_BCN_PSR_RPT_P0_C1 0xEE84
+ #define B_AX_BCAID_P0_MASK GENMASK(10, 0)
+ 
++#define R_AX_RX_PM_CTRL 0xCEAC
++#define R_AX_RX_PM_CTRL_C1 0xEEAC
++#define B_AX_RX_PM_EN BIT(0)
++
+ #define R_AX_RX_STATE_MONITOR 0xCEF0
+ #define R_AX_RX_STATE_MONITOR_C1 0xEEF0
+ #define B_AX_RX_STATE_MONITOR_MASK GENMASK(31, 0)
+@@ -9868,6 +9876,10 @@
  #define R_RFE_SEL0_BASE 0x5880
  #define B_RFE_SEL0_SRC_MASK GENMASK(3, 0)
  #define R_RFE_SEL32_BASE 0x5884
@@ -2239,7 +2277,7 @@ Index: backports-7.2/drivers/net/wireless/realtek/rtw89/reg.h
  #define RFE_SEL0_SRC_ANTSEL_0 8
  #define R_RFE_INV0 0x5890
  #define R_P0_RFM 0x5894
-@@ -9875,6 +9879,8 @@
+@@ -9875,6 +9887,8 @@
  #define B_P0_RFM_TX_OPT BIT(6)
  #define B_P0_RFM_BT_EN BIT(5)
  #define B_P0_RFM_OUT GENMASK(4, 0)
